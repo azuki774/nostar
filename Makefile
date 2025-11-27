@@ -1,6 +1,6 @@
 BINARY_NAME ?= nostar
 BUILD_DIR ?= bin
-PKG ?= ./cmd/nostar
+PKG ?= ./
 GOOS ?= linux
 GOARCH ?= amd64
 LDFLAGS ?= -s -w -extldflags '-static'
@@ -33,3 +33,4 @@ check: fmt test staticcheck
 
 setup:
 	go install honnef.co/go/tools/cmd/staticcheck@latest
+	go install github.com/spf13/cobra-cli@latest

@@ -1,0 +1,52 @@
+name: Migration Test
+
+on:
+  pull_request:
+  push:
+    branches:
+      - master
+
+jobs:
+  migrate:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install psql client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Wait for Postgres
+        env:
+          PGPASSWORD: postgres
+        run: |
+          until pg_isready -h localhost -U postgres; do
+            sleep 1
+          done
+
+      - name: Create database
+        env:
+          PGPASSWORD: postgres
+        run: psql -h localhost -U postgres -c "CREATE DATABASE redarchive;"
+
+      - name: Run migrations
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d redarchive -f scripts/migrations/001_init.sql
