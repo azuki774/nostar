@@ -45,7 +45,7 @@ func (s *Server) Run(ctx context.Context) error {
 
 	zap.S().Infow("starting websocket listener (HTTP stub)", "addr", s.addr)
 
-	if err := srv.ListenAndServe(); err != nil && errors.Is(err, http.ErrServerClosed) {
+	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		// 通常 Server Close で現れないエラーが発生した場合
 		zap.S().Errorw("failed to close server", "err", err)
 	}

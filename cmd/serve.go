@@ -1,6 +1,11 @@
 package cmd
 
 import (
+	"context"
+	"nostar/internal/infrastrcture/db"
+	"nostar/internal/relay/usecase"
+	"nostar/internal/transport/websocket"
+
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"
 )
@@ -21,8 +26,16 @@ to quickly create a Cobra application.`,
 		zap.S().Infow("serve called", "port", servePort)
 
 		// EventStore
+		eventStore := db.NewEventStore()
 
 		// RelayService
+		relaySvc := usecase.NewRelayService(eventStore)
+
+		// Server
+		Srv := websocket.NewServer("0.0.0.0:9999", relaySvc)
+
+		ctx := context.Background()
+		_ = Srv.Run(ctx)
 	},
 }
 
