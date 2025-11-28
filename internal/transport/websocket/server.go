@@ -9,8 +9,17 @@ import (
 	"nostar/internal/relay/domain"
 	"nostar/internal/relay/usecase"
 
+	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
 )
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true // TODO
+	},
+}
 
 // Server is an inbound adapter that accepts WebSocket connections
 // and forwards parsed messages to RelayService.
@@ -43,7 +52,7 @@ func (s *Server) Run(ctx context.Context) error {
 		_ = srv.Shutdown(ctx)
 	}()
 
-	zap.S().Infow("starting websocket listener (HTTP stub)", "addr", s.addr)
+	zap.S().Infow("starting websocket listener", "addr", s.addr)
 
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		// 通常 Server Close で現れないエラーが発生した場合
@@ -54,58 +63,65 @@ func (s *Server) Run(ctx context.Context) error {
 	return nil
 }
 
-// ServeHTTP is a placeholder: it pretends to receive one message via HTTP body,
-// then routes it into RelayService. Replace with real WS handling later.
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	defer r.Body.Close()
-
-	var wire WireMessage
-	if err := json.NewDecoder(r.Body).Decode(&wire); err != nil {
-		http.Error(w, "invalid message", http.StatusBadRequest)
+	// ここで HTTP → WebSocket にアップグレード
+	c, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		zap.S().Errorw("upgrade error", zap.Error(err))
 		return
 	}
+	defer c.Close()
+	zap.S().Debugw("websocket upgraded", "remote_addr", r.RemoteAddr)
 
-	ctx := r.Context()
-	switch wire.Type {
-	case "EVENT":
-		var evt domain.Event
-		if err := json.Unmarshal(wire.Payload, &evt); err != nil {
-			http.Error(w, "invalid event", http.StatusBadRequest)
-			return
-		}
-		if err := s.relay.HandleEvent(ctx, usecase.EventMessage{Event: evt}); err != nil {
-			http.Error(w, "failed to handle event", http.StatusInternalServerError)
-			return
-		}
-	case "REQ":
-		var sub domain.Subscription
-		if err := json.Unmarshal(wire.Payload, &sub); err != nil {
-			http.Error(w, "invalid subscription", http.StatusBadRequest)
-			return
-		}
-		events, err := s.relay.HandleReq(ctx, usecase.ReqMessage{Subscription: sub})
+	for {
+		ctx := r.Context()
+		_, data, err := c.ReadMessage()
 		if err != nil {
-			http.Error(w, "failed to handle req", http.StatusInternalServerError)
+			zap.S().Infow("websocket read closed", "err", err)
 			return
 		}
-		_ = json.NewEncoder(w).Encode(events)
-	case "CLOSE":
-		var msg usecase.CloseMessage
-		if err := json.Unmarshal(wire.Payload, &msg); err != nil {
-			http.Error(w, "invalid close", http.StatusBadRequest)
-			return
-		}
-		if err := s.relay.HandleClose(ctx, msg); err != nil {
-			http.Error(w, "failed to close", http.StatusInternalServerError)
-			return
-		}
-	default:
-		http.Error(w, "unknown message type", http.StatusBadRequest)
-		return
-	}
-}
 
-type WireMessage struct {
-	Type    string          `json:"type"`    // "EVENT", "REQ", "CLOSE"
-	Payload json.RawMessage `json:"payload"` // raw JSON of each message type
+		var wire WireMessage
+		if err := json.Unmarshal(data, &wire); err != nil {
+			zap.S().Debugw("unknown data", zap.String("data", string(data)), zap.Error(err))
+			if err := c.WriteJSON([]string{"NOTICE", "invalid JSON: cannot parse message"}); err != nil {
+				zap.S().Errorw("write notice failed", zap.Error(err))
+				return
+			}
+		}
+
+		switch wire.Type {
+		case "EVENT":
+			var evt domain.Event
+			if err := json.Unmarshal(wire.Event, &evt); err != nil {
+				c.WriteJSON([]string{"NOTICE", "invalid JSON: cannot parse message"})
+				continue
+			}
+			zap.S().Debugw("received EVENT", zap.Int("kind", evt.Kind))
+
+			if err := s.relay.HandleEvent(ctx, usecase.EventMessage{Event: evt}); err != nil {
+				zap.S().Errorw("handle EVENT failed", zap.Error(err))
+				if writeErr := c.WriteJSON([]any{"OK", evt.ID, false, "internal error"}); writeErr != nil {
+					// クライアントに EVENT 登録に失敗したことを通知
+					zap.S().Errorw("write EVENT OK failed", zap.Error(writeErr))
+					return
+				}
+				continue
+			}
+
+			if err := c.WriteJSON([]any{"OK", evt.ID, true, ""}); err != nil {
+				zap.S().Errorw("write EVENT OK failed", zap.Error(err))
+				return
+			}
+
+		case "REQ":
+			zap.S().Debugw("received REQ")
+			// wire.SubscriptionID, wire.Filters を使って Subscription を組み立てる
+
+		case "CLOSE":
+			zap.S().Debugw("received CLOSE")
+			// wire.SubscriptionID を usecase.CloseMessage に渡す
+		}
+	}
+
 }
