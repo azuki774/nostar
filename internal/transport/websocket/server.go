@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"nostar/internal/relay/domain"
@@ -166,8 +165,6 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				}
 				continue
 			}
-
-			fmt.Println(sub)
 
 			// この REQ に対する過去イベントの送信終了
 			if err := c.WriteJSON([]any{"EOSE", wire.SubscriptionID}); err != nil {
