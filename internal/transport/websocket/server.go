@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 
 	"nostar/internal/relay/domain"
@@ -77,7 +78,14 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		ctx := r.Context()
 		_, data, err := c.ReadMessage()
 		if err != nil {
-			zap.S().Infow("websocket read closed", "err", err)
+			var ce *websocket.CloseError
+			if errors.As(err, &ce) && ce.Code == websocket.CloseAbnormalClosure {
+				// クライアント or ネットワーク都合の異常終了として info 扱い
+				zap.S().Infow("websocket closed by client", "code", ce.Code, "text", ce.Text)
+			} else {
+				// それ以外はエラーとして扱う
+				zap.S().Errorw("websocket read error", "err", err)
+			}
 			return
 		}
 
@@ -118,9 +126,65 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			zap.S().Debugw("received REQ")
 			// wire.SubscriptionID, wire.Filters を使って Subscription を組み立てる
 
+			// フィルタ部分だけ軽くパースする（1つ目だけを採用）
+			// TODO: 複数フィルターに対応
+			var f struct {
+				Authors []string `json:"authors"`
+				Kinds   []int    `json:"kinds"`
+				Since   *int64   `json:"since"`
+				Until   *int64   `json:"until"`
+				Limit   *int     `json:"limit"`
+			}
+
+			if len(wire.Filters) > 0 {
+				// TODO: 複数フィルターに対応
+				if err := json.Unmarshal(wire.Filters[0], &f); err != nil {
+					zap.S().Debugw("invalid REQ filter", "data", string(wire.Filters[0]), zap.Error(err))
+					if err := c.WriteJSON([]string{"NOTICE", "invalid REQ filter"}); err != nil {
+						zap.S().Errorw("write notice failed", zap.Error(err))
+						return
+					}
+					continue
+				}
+			}
+
+			sub := domain.Subscription{
+				ID:      wire.SubscriptionID,
+				Authors: f.Authors,
+				Kinds:   f.Kinds,
+				Since:   f.Since,
+				Until:   f.Until,
+				Limit:   f.Limit,
+				// TODO: Tags は NIP-01 の "#e", "#p" などをちゃんと扱うときに埋める
+			}
+
+			if _, err := s.relay.HandleReq(ctx, usecase.ReqMessage{Subscription: sub}); err != nil {
+				zap.S().Errorw("handle REQ failed", zap.Error(err))
+				if err := c.WriteJSON([]string{"NOTICE", "internal error on REQ"}); err != nil {
+					zap.S().Errorw("write notice failed", zap.Error(err))
+					return
+				}
+				continue
+			}
+
+			fmt.Println(sub)
+
+			// この REQ に対する過去イベントの送信終了
+			if err := c.WriteJSON([]any{"EOSE", wire.SubscriptionID}); err != nil {
+				zap.S().Errorw("write EOSE failed", zap.Error(err))
+				return
+			}
+
+			// この実装では以降何もしない
+
 		case "CLOSE":
 			zap.S().Debugw("received CLOSE")
-			// wire.SubscriptionID を usecase.CloseMessage に渡す
+
+			if err := s.relay.HandleClose(ctx, usecase.CloseMessage{SubscriptionID: wire.SubscriptionID}); err != nil {
+				zap.S().Errorw("handle CLOSE failed", zap.Error(err))
+				// CLOSE は ack 不要なので、エラーでもクライアントには特に何も返さず continue でよい
+				continue
+			}
 		}
 	}
 
