@@ -4,9 +4,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"nostar/internal/logger"
 )
-
-
 
 // rootCmd represents the base command when called without any subcommands
 var rootCmd = &cobra.Command{
@@ -28,6 +27,7 @@ to quickly create a Cobra application.`,
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
+		logger.Error("command execution failed", err)
 		os.Exit(1)
 	}
 }
@@ -43,5 +43,3 @@ func init() {
 	// when this action is called directly.
 	rootCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
 }
-
-
