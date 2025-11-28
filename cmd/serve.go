@@ -2,8 +2,10 @@ package cmd
 
 import (
 	"github.com/spf13/cobra"
-	"nostar/internal/logger"
+	"go.uber.org/zap"
 )
+
+var servePort int
 
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
@@ -16,7 +18,11 @@ Cobra is a CLI library for Go that empowers applications.
 This application is a tool to generate the needed files
 to quickly create a Cobra application.`,
 	Run: func(cmd *cobra.Command, args []string) {
-		logger.Info("serve called")
+		zap.S().Infow("serve called", "port", servePort)
+
+		// EventStore
+
+		// RelayService
 	},
 }
 
@@ -31,5 +37,5 @@ func init() {
 
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
-	// serveCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	serveCmd.Flags().IntVarP(&servePort, "port", "p", 8080, "listen port")
 }

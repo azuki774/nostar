@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
-	defer logger.LogPanic()
+	glogger := logger.Load()
+	defer glogger.Sync() // 必要
 	cmd.Execute()
 }

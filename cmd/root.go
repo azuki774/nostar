@@ -4,7 +4,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
-	"nostar/internal/logger"
+	"go.uber.org/zap"
 )
 
 // rootCmd represents the base command when called without any subcommands
@@ -27,7 +27,7 @@ to quickly create a Cobra application.`,
 func Execute() {
 	err := rootCmd.Execute()
 	if err != nil {
-		logger.Error("command execution failed", err)
+		zap.S().Info("command execution failed", err)
 		os.Exit(1)
 	}
 }
