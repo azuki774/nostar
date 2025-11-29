@@ -1,0 +1,31 @@
+name: Go
+
+on:
+  push:
+    branches:
+      - "**"
+  workflow_call:
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.4"
+
+      - name: Install dependencies
+        run: | 
+          go mod download
+          make setup
+
+      - name: Run tests
+        run: make check
+
+      - name: Build binary
+        run: make build

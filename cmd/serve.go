@@ -3,10 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"nostar/internal/infrastrcture/db"
 	"nostar/internal/relay/usecase"
 	"nostar/internal/transport/websocket"
+	"os"
 
 	"github.com/spf13/cobra"
 	"go.uber.org/zap"

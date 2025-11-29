@@ -1,0 +1,17 @@
+{
+    "relays": {
+        "ws://localhost:9999": {
+            "read": true,
+            "write": true,
+            "search": false,
+            "global": false,
+            "dm": false,
+            "bm": false
+        }
+    },
+    "followList": [],
+    "privatekey": "<<TEST_NSEC_KEY>>",
+    "updated": "0001-01-01T00:00:00Z",
+    "emojis": null,
+    "nwc-uri": ""
+}
