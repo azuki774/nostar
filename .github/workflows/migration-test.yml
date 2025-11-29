@@ -1,4 +1,4 @@
-name: Migration Test
+name: E2E Migration Test
 
 on:
   pull_request:
@@ -7,7 +7,7 @@ on:
       - master
 
 jobs:
-  migrate:
+  e2e:
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -26,6 +26,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.25.4"
+      - name: Install dependencies
+        run: | 
+          go mod download
+          make setup
 
       - name: Install psql client
         run: |
@@ -50,3 +59,31 @@ jobs:
           PGPASSWORD: postgres
         run: |
           psql -h localhost -U postgres -d nostar -f scripts/migrations/001_init.sql
+
+      - name: Build binary
+        run: make build
+
+      - name: Install algia (Nostr Client CLI) # https://github.com/mattn/algia
+        run: |
+          go install github.com/mattn/algia@latest
+          mkdir -p ~/.config/algia
+          algia version
+
+      - name: Injection secret and put config
+        run: |
+          jq '.privatekey = env.TEST_NSEC_KEY' \
+            .github/workflows/config.json > ~/.config/algia/config.json
+        env:
+          TEST_NSEC_KEY: ${{ secrets.TEST_NSEC_KEY }}
+
+# ----------------------------------------------
+
+      - name: Run Nostar server
+        env:
+          DATABASE_URL: postgres://postgres:postgres@localhost:5432/nostar?sslmode=disable
+        run: |
+          nohup ./bin/nostar serve &
+          sleep 5s
+
+      - name: Post powa
+        run: algia powa
