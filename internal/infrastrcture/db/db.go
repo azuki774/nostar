@@ -2,7 +2,9 @@ package db
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"nostar/internal/relay/domain"
 
 	"go.uber.org/zap"
@@ -40,11 +42,61 @@ func NewGormDB(ctx context.Context, cfg Config) (*gorm.DB, error) {
 	return gdb, nil
 }
 
+// EventModel is the GORM model for storing Nostr events
+type EventModel struct {
+	ID        string `gorm:"primaryKey;size:64"`
+	Pubkey    string `gorm:"index;size:64;not null"`
+	Sig       string `gorm:"size:128;not null"`
+	CreatedAt int64  `gorm:"index;not null"`
+	Kind      int    `gorm:"index;not null"`
+	Tags      string `gorm:"type:jsonb"`
+	Content   string `gorm:"type:text"`
+}
+
+func (EventModel) TableName() string {
+	return "events"
+}
+
+// toModel converts domain.Event to EventModel for database storage
+func toModel(evt domain.Event) (EventModel, error) {
+	tagsJSON, err := json.Marshal(evt.Tags)
+	if err != nil {
+		return EventModel{}, fmt.Errorf("failed to marshal tags: %w", err)
+	}
+
+	return EventModel{
+		ID:        evt.ID,
+		Pubkey:    evt.PubKey,
+		Sig:       evt.Signature,
+		CreatedAt: evt.CreatedAt,
+		Kind:      evt.Kind,
+		Tags:      string(tagsJSON),
+		Content:   evt.Content,
+	}, nil
+}
+
+// toDomain converts EventModel to domain.Event
+func toDomain(model EventModel) (domain.Event, error) {
+	var tags [][]string
+	if err := json.Unmarshal([]byte(model.Tags), &tags); err != nil {
+		return domain.Event{}, fmt.Errorf("failed to unmarshal tags: %w", err)
+	}
+
+	return domain.Event{
+		ID:        model.ID,
+		PubKey:    model.Pubkey,
+		Signature: model.Sig,
+		CreatedAt: model.CreatedAt,
+		Kind:      model.Kind,
+		Tags:      tags,
+		Content:   model.Content,
+	}, nil
+}
+
 type EventStore struct {
 	db *gorm.DB
 }
 
-// TODO: 具体的に実装する
 func NewEventStore(db *gorm.DB) *EventStore {
 	return &EventStore{
 		db: db,
@@ -52,7 +104,15 @@ func NewEventStore(db *gorm.DB) *EventStore {
 }
 
 func (e *EventStore) Save(ctx context.Context, evt domain.Event) error {
-	zap.S().Infow("not yet implemeneted", "type", "Save")
+	model, err := toModel(evt) // domain -> DBモデルに変換
+	if err != nil {
+		return fmt.Errorf("failed to convert to model: %w", err)
+	}
+
+	if err := e.db.WithContext(ctx).Create(&model).Error; err != nil {
+		return fmt.Errorf("failed to save event: %w", err)
+	}
+
 	return nil
 }
 
