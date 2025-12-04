@@ -76,22 +76,23 @@ func toModel(evt domain.Event) (EventModel, error) {
 }
 
 // toDomain converts EventModel to domain.Event
-func toDomain(model EventModel) (domain.Event, error) {
-	var tags [][]string
-	if err := json.Unmarshal([]byte(model.Tags), &tags); err != nil {
-		return domain.Event{}, fmt.Errorf("failed to unmarshal tags: %w", err)
-	}
+// こちら向きを使うようになったらコメントアウトを外す
+// func toDomain(model EventModel) (domain.Event, error) {
+// 	var tags [][]string
+// 	if err := json.Unmarshal([]byte(model.Tags), &tags); err != nil {
+// 		return domain.Event{}, fmt.Errorf("failed to unmarshal tags: %w", err)
+// 	}
 
-	return domain.Event{
-		ID:        model.ID,
-		PubKey:    model.Pubkey,
-		Signature: model.Sig,
-		CreatedAt: model.CreatedAt,
-		Kind:      model.Kind,
-		Tags:      tags,
-		Content:   model.Content,
-	}, nil
-}
+// 	return domain.Event{
+// 		ID:        model.ID,
+// 		PubKey:    model.Pubkey,
+// 		Signature: model.Sig,
+// 		CreatedAt: model.CreatedAt,
+// 		Kind:      model.Kind,
+// 		Tags:      tags,
+// 		Content:   model.Content,
+// 	}, nil
+// }
 
 type EventStore struct {
 	db *gorm.DB
