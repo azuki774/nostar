@@ -21,7 +21,21 @@ func NewRelayService(store relay.EventStore) *RelayService {
 
 // HandleEvent processes an EVENT message: validation, persistence, and fanout.
 func (s *RelayService) HandleEvent(ctx context.Context, msg EventMessage) error {
-	// TODO: add signature verification and validation rules.
+	// Validate event fields
+	if err := msg.Event.Validate(); err != nil {
+		return err
+	}
+
+	// Verify signature and ID
+	valid, err := msg.Event.CheckSignature()
+	if err != nil {
+		return err
+	}
+	if !valid {
+		return err
+	}
+
+	// Save to store
 	if err := s.store.Save(ctx, msg.Event); err != nil {
 		return err
 	}
