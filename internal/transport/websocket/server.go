@@ -161,13 +161,22 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				Filters: filters,
 			}
 
-			if _, err := s.relay.HandleReq(ctx, usecase.ReqMessage{Subscription: sub}); err != nil {
+			var events []domain.Event
+			if events, err = s.relay.HandleReq(ctx, usecase.ReqMessage{Subscription: sub}); err != nil {
 				zap.S().Errorw("handle REQ failed", zap.Error(err))
 				if err := c.WriteJSON([]string{"NOTICE", "internal error on REQ"}); err != nil {
 					zap.S().Errorw("write notice failed", zap.Error(err))
 					return
 				}
 				continue
+			}
+
+			// 取得したイベントをクライアントに送信
+			for _, evt := range events {
+				if err := c.WriteJSON([]any{"EVENT", wire.SubscriptionID, evt}); err != nil {
+					zap.S().Errorw("write event failed", zap.Error(err))
+					return
+				}
 			}
 
 			// この REQ に対する過去イベントの送信終了

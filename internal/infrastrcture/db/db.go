@@ -77,22 +77,22 @@ func toModel(evt domain.Event) (EventModel, error) {
 
 // toDomain converts EventModel to domain.Event
 // こちら向きを使うようになったらコメントアウトを外す
-// func toDomain(model EventModel) (domain.Event, error) {
-// 	var tags [][]string
-// 	if err := json.Unmarshal([]byte(model.Tags), &tags); err != nil {
-// 		return domain.Event{}, fmt.Errorf("failed to unmarshal tags: %w", err)
-// 	}
+func toDomain(model EventModel) (domain.Event, error) {
+	var tags [][]string
+	if err := json.Unmarshal([]byte(model.Tags), &tags); err != nil {
+		return domain.Event{}, fmt.Errorf("failed to unmarshal tags: %w", err)
+	}
 
-// 	return domain.Event{
-// 		ID:        model.ID,
-// 		PubKey:    model.Pubkey,
-// 		Signature: model.Sig,
-// 		CreatedAt: model.CreatedAt,
-// 		Kind:      model.Kind,
-// 		Tags:      tags,
-// 		Content:   model.Content,
-// 	}, nil
-// }
+	return domain.Event{
+		ID:        model.ID,
+		PubKey:    model.Pubkey,
+		Signature: model.Sig,
+		CreatedAt: model.CreatedAt,
+		Kind:      model.Kind,
+		Tags:      tags,
+		Content:   model.Content,
+	}, nil
+}
 
 type EventStore struct {
 	db *gorm.DB
@@ -118,6 +118,57 @@ func (e *EventStore) Save(ctx context.Context, evt domain.Event) error {
 }
 
 func (e *EventStore) Query(ctx context.Context, sub domain.Subscription) ([]domain.Event, error) {
-	zap.S().Infow("not yet implemeneted", "type", "Query")
-	return []domain.Event{}, nil
+	// TODO: タグ検索を実装する
+	var results []domain.Event
+
+	for _, filter := range sub.Filters {
+		var models []EventModel
+		query := e.db.WithContext(ctx).Model(&EventModel{})
+
+		// IDs filter
+		if len(filter.IDs) > 0 {
+			query = query.Where("id IN ?", filter.IDs)
+		}
+
+		// Authors filter
+		if len(filter.Authors) > 0 {
+			query = query.Where("pubkey IN ?", filter.Authors)
+		}
+
+		// Kinds filter
+		if len(filter.Kinds) > 0 {
+			query = query.Where("kind IN ?", filter.Kinds)
+		}
+
+		// Time range filters
+		if filter.Since != nil {
+			query = query.Where("created_at >= ?", *filter.Since)
+		}
+		if filter.Until != nil {
+			query = query.Where("created_at <= ?", *filter.Until)
+		}
+
+		// Limit (各フィルタに適用)
+		if filter.Limit != nil {
+			query = query.Limit(*filter.Limit)
+		}
+
+		if err := query.Find(&models).Error; err != nil {
+			return nil, err
+		}
+
+		// Domain Eventに変換してマージ
+		for _, model := range models {
+			if evt, err := toDomain(model); err == nil {
+				results = append(results, evt)
+			} else {
+				return []domain.Event{}, fmt.Errorf("failed to load events: %w", err)
+			}
+		}
+	}
+
+	// IDで重複除去（OR条件のため）
+	results = domain.DedupeByID(results)
+
+	return results, nil
 }
