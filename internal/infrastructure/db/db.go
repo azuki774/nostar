@@ -140,6 +140,11 @@ func (e *EventStore) Query(ctx context.Context, sub domain.Subscription) ([]doma
 			query = query.Where("kind IN ?", filter.Kinds)
 		}
 
+		// Tags filter (#e, #p, #t, etc.)
+		for tagName, tagValues := range filter.Tags {
+			query = query.Where("EXISTS (SELECT 1 FROM jsonb_array_elements(tags) AS tag WHERE tag->>0 = ? AND tag->>1 IN ?)", tagName, tagValues)
+		}
+
 		// Time range filters
 		if filter.Since != nil {
 			query = query.Where("created_at >= ?", *filter.Since)
