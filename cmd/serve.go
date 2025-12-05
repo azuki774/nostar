@@ -3,7 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"nostar/internal/infrastrcture/db"
+	"nostar/internal/infrastructure/db"
 	"nostar/internal/relay/usecase"
 	"nostar/internal/transport/websocket"
 	"os"

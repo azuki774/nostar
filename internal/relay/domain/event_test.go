@@ -230,3 +230,67 @@ func TestEvent_CheckSignature(t *testing.T) {
 		})
 	}
 }
+
+func TestDedupeByID(t *testing.T) {
+	tests := []struct {
+		name   string
+		events []domain.Event
+		want   []domain.Event
+	}{
+		{
+			name:   "empty slice",
+			events: []domain.Event{},
+			want:   []domain.Event{},
+		},
+		{
+			name: "no duplicates",
+			events: []domain.Event{
+				{ID: "event1", PubKey: "pub1", CreatedAt: 1000, Kind: 1},
+				{ID: "event2", PubKey: "pub2", CreatedAt: 1001, Kind: 1},
+			},
+			want: []domain.Event{
+				{ID: "event1", PubKey: "pub1", CreatedAt: 1000, Kind: 1},
+				{ID: "event2", PubKey: "pub2", CreatedAt: 1001, Kind: 1},
+			},
+		},
+		{
+			name: "with duplicates",
+			events: []domain.Event{
+				{ID: "event1", PubKey: "pub1", CreatedAt: 1000, Kind: 1},
+				{ID: "event2", PubKey: "pub2", CreatedAt: 1001, Kind: 1},
+				{ID: "event1", PubKey: "pub1", CreatedAt: 1000, Kind: 1}, // duplicate
+				{ID: "event3", PubKey: "pub3", CreatedAt: 1002, Kind: 1},
+			},
+			want: []domain.Event{
+				{ID: "event1", PubKey: "pub1", CreatedAt: 1000, Kind: 1},
+				{ID: "event2", PubKey: "pub2", CreatedAt: 1001, Kind: 1},
+				{ID: "event3", PubKey: "pub3", CreatedAt: 1002, Kind: 1},
+			},
+		},
+		{
+			name: "multiple duplicates",
+			events: []domain.Event{
+				{ID: "dup", PubKey: "pub1", CreatedAt: 1000, Kind: 1},
+				{ID: "dup", PubKey: "pub2", CreatedAt: 1001, Kind: 1},
+				{ID: "dup", PubKey: "pub3", CreatedAt: 1002, Kind: 1},
+			},
+			want: []domain.Event{
+				{ID: "dup", PubKey: "pub1", CreatedAt: 1000, Kind: 1},
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := domain.DedupeByID(tt.events)
+			if len(got) != len(tt.want) {
+				t.Errorf("DedupeByID() length = %v, want %v", len(got), len(tt.want))
+				return
+			}
+			for i, event := range got {
+				if event.ID != tt.want[i].ID {
+					t.Errorf("DedupeByID()[%d].ID = %v, want %v", i, event.ID, tt.want[i].ID)
+				}
+			}
+		})
+	}
+}

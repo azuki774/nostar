@@ -4,16 +4,17 @@ package domain
 // Filter matching logic can be added here.
 type Subscription struct {
 	ID      string   // subscription ID from client
-	Authors []string // optional pubkeys
-	Kinds   []int    // optional kinds
-	Tags    [][]string
-	Since   *int64
-	Until   *int64
-	Limit   *int
+	Filters []Filter // filtering events
 }
 
 // Matches returns whether the event satisfies the subscription filters.
-// TODO: implement proper filtering per Nostr spec.
-func (s Subscription) Matches(Event) bool {
-	return true
+func (s Subscription) Matches(evt Event) bool {
+	// 引数のイベントが、既存のサブスクリプションの FIlters 条件に合うかを検索
+	// Filter 同士は、OR 条件なのでマッチすれば true
+	for _, filter := range s.Filters {
+		if filter.Matches(evt) {
+			return true
+		}
+	}
+	return false
 }

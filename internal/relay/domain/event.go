@@ -75,3 +75,18 @@ func (e *Event) CheckSignature() (bool, error) {
 
 	return true, nil
 }
+
+// DedupeByID removes duplicate events by their ID, preserving order
+func DedupeByID(events []Event) []Event {
+	seen := make(map[string]bool)
+	var result []Event
+
+	for _, event := range events {
+		if !seen[event.ID] {
+			seen[event.ID] = true
+			result = append(result, event)
+		}
+	}
+
+	return result
+}

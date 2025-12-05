@@ -143,27 +143,40 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 						zap.S().Errorw("write notice failed", zap.Error(err))
 						return
 					}
-					continue
+					continue // コネクションは継続
 				}
+			}
+
+			filters, err := domain.NewFiltersFromRaw(wire.Filters)
+			if err != nil {
+				if err := c.WriteJSON([]string{"NOTICE", "invalid REQ filter"}); err != nil {
+					zap.S().Errorw("failed to parse filters", zap.Error(err))
+					return
+				}
+				continue // コネクションは継続
 			}
 
 			sub := domain.Subscription{
 				ID:      wire.SubscriptionID,
-				Authors: f.Authors,
-				Kinds:   f.Kinds,
-				Since:   f.Since,
-				Until:   f.Until,
-				Limit:   f.Limit,
-				// TODO: Tags は NIP-01 の "#e", "#p" などをちゃんと扱うときに埋める
+				Filters: filters,
 			}
 
-			if _, err := s.relay.HandleReq(ctx, usecase.ReqMessage{Subscription: sub}); err != nil {
+			var events []domain.Event
+			if events, err = s.relay.HandleReq(ctx, usecase.ReqMessage{Subscription: sub}); err != nil {
 				zap.S().Errorw("handle REQ failed", zap.Error(err))
 				if err := c.WriteJSON([]string{"NOTICE", "internal error on REQ"}); err != nil {
 					zap.S().Errorw("write notice failed", zap.Error(err))
 					return
 				}
 				continue
+			}
+
+			// 取得したイベントをクライアントに送信
+			for _, evt := range events {
+				if err := c.WriteJSON([]any{"EVENT", wire.SubscriptionID, evt}); err != nil {
+					zap.S().Errorw("write event failed", zap.Error(err))
+					return
+				}
 			}
 
 			// この REQ に対する過去イベントの送信終了
