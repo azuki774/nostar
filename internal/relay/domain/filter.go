@@ -1,6 +1,10 @@
 package domain
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+	"fmt"
+)
 
 type Filter struct {
 	IDs     []string `json:"ids,omitempty"`
@@ -49,6 +53,38 @@ func NewFilterFromRaw(raw map[string]any) (Filter, error) {
 
 	f.Raw = raw
 	return f, nil
+}
+
+// NewFiltersFromRaw parses multiple raw filter JSON messages into domain Filters.
+// Returns successfully parsed filters and an error if any parsing failed.
+// If some filters fail to parse, successfully parsed filters are still returned,
+// but an error containing all parsing errors is also returned.
+func NewFiltersFromRaw(rawFilters []json.RawMessage) ([]Filter, error) {
+	var filters []Filter
+	var parseErrors []error
+
+	for i, raw := range rawFilters {
+		var m map[string]any
+		if err := json.Unmarshal(raw, &m); err != nil {
+			parseErrors = append(parseErrors, fmt.Errorf("filter %d: invalid JSON: %w", i, err))
+			continue
+		}
+
+		f, err := NewFilterFromRaw(m)
+		if err != nil {
+			parseErrors = append(parseErrors, fmt.Errorf("filter %d: %w", i, err))
+			continue
+		}
+
+		filters = append(filters, f)
+	}
+
+	// 複数エラーを結合
+	if len(parseErrors) > 0 {
+		return filters, errors.Join(parseErrors...)
+	}
+
+	return filters, nil
 }
 
 // Matches returns whether the event satisfies this filter.

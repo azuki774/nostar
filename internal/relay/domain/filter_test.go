@@ -1,6 +1,7 @@
 package domain_test
 
 import (
+	"encoding/json"
 	"nostar/internal/relay/domain"
 	"reflect"
 	"testing"
@@ -308,6 +309,136 @@ func TestFilter_Matches(t *testing.T) {
 			got := tt.filter.Matches(tt.event)
 			if got != tt.want {
 				t.Errorf("Filter.Matches() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestNewFiltersFromRaw(t *testing.T) {
+	// Helper function to create json.RawMessage from JSON string
+	toRawMessage := func(jsonStr string) json.RawMessage {
+		return json.RawMessage(jsonStr)
+	}
+
+	tests := []struct {
+		name        string
+		rawFilters  []json.RawMessage
+		wantFilters []domain.Filter
+		wantErr     bool
+	}{
+		{
+			name: "multiple valid filters",
+			rawFilters: []json.RawMessage{
+				toRawMessage(`{"ids": ["id1"], "authors": ["author1"]}`),
+				toRawMessage(`{"kinds": [1], "since": 1000}`),
+			},
+			wantFilters: []domain.Filter{
+				{
+					IDs:     []string{"id1"},
+					Authors: []string{"author1"},
+					Tags:    map[string][]string{},
+				},
+				{
+					Kinds: []int{1},
+					Since: int64toPtr(1000),
+					Tags:  map[string][]string{},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "filters with tags",
+			rawFilters: []json.RawMessage{
+				toRawMessage(`{"#e": ["event1"], "#p": ["pubkey1"]}`),
+				toRawMessage(`{"#t": ["nostr", "bitcoin"]}`),
+			},
+			wantFilters: []domain.Filter{
+				{
+					Tags: map[string][]string{
+						"e": {"event1"},
+						"p": {"pubkey1"},
+					},
+				},
+				{
+					Tags: map[string][]string{
+						"t": {"nostr", "bitcoin"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "some invalid JSON",
+			rawFilters: []json.RawMessage{
+				toRawMessage(`{"ids": ["id1"]}`), // valid
+				toRawMessage(`invalid json`),     // invalid
+				toRawMessage(`{"kinds": [1]}`),   // valid
+			},
+			wantFilters: []domain.Filter{
+				{
+					IDs:  []string{"id1"},
+					Tags: map[string][]string{},
+				},
+				{
+					Kinds: []int{1},
+					Tags:  map[string][]string{},
+				},
+			},
+			wantErr: true, // 1つのフィルタが失敗
+		},
+		{
+			name: "all invalid filters",
+			rawFilters: []json.RawMessage{
+				toRawMessage(`not json`),
+				toRawMessage(`also not json`),
+			},
+			wantFilters: []domain.Filter{}, // 成功したフィルタなし
+			wantErr:     true,
+		},
+		{
+			name:        "empty filters",
+			rawFilters:  []json.RawMessage{},
+			wantFilters: []domain.Filter{},
+			wantErr:     false,
+		},
+		{
+			name: "invalid filter structure",
+			rawFilters: []json.RawMessage{
+				toRawMessage(`{"ids": ["id1"]}`),       // valid
+				toRawMessage(`{"kinds": ["not_int"]}`), // kinds should be []int, not []string
+			},
+			wantFilters: []domain.Filter{
+				{
+					IDs:  []string{"id1"},
+					Tags: map[string][]string{},
+				},
+			},
+			wantErr: true, // kinds の型変換エラー
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotFilters, gotErr := domain.NewFiltersFromRaw(tt.rawFilters)
+
+			if gotErr != nil != tt.wantErr {
+				t.Errorf("NewFiltersFromRaw() error = %v, wantErr %v", gotErr, tt.wantErr)
+				return
+			}
+
+			if len(gotFilters) != len(tt.wantFilters) {
+				t.Errorf("NewFiltersFromRaw() returned %d filters, want %d", len(gotFilters), len(tt.wantFilters))
+				return
+			}
+
+			for i, got := range gotFilters {
+				want := tt.wantFilters[i]
+				// Raw field is not important for equality comparison
+				got.Raw = nil
+				want.Raw = nil
+				if !reflect.DeepEqual(got, want) {
+					t.Errorf("NewFiltersFromRaw() filter[%d] = %v, want %v", i, got, want)
+				}
 			}
 		})
 	}
