@@ -95,3 +95,220 @@ func TestNewFilterFromRaw(t *testing.T) {
 		})
 	}
 }
+
+func TestFilter_Matches(t *testing.T) {
+	// Helper function to create test event
+	createEvent := func(id, pubkey string, createdAt int64, kind int, tags [][]string) domain.Event {
+		return domain.Event{
+			ID:        id,
+			PubKey:    pubkey,
+			CreatedAt: createdAt,
+			Kind:      kind,
+			Tags:      tags,
+		}
+	}
+
+	tests := []struct {
+		name   string
+		filter domain.Filter
+		event  domain.Event
+		want   bool
+	}{
+		{
+			name:   "empty filter matches any event",
+			filter: domain.Filter{},
+			event:  createEvent("id1", "pub1", 1000, 1, nil),
+			want:   true,
+		},
+		{
+			name: "IDs filter - match",
+			filter: domain.Filter{
+				IDs: []string{"id1", "id2"},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, nil),
+			want:  true,
+		},
+		{
+			name: "IDs filter - no match",
+			filter: domain.Filter{
+				IDs: []string{"id1", "id2"},
+			},
+			event: createEvent("id3", "pub1", 1000, 1, nil),
+			want:  false,
+		},
+		{
+			name: "Authors filter - match",
+			filter: domain.Filter{
+				Authors: []string{"pub1", "pub2"},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, nil),
+			want:  true,
+		},
+		{
+			name: "Authors filter - no match",
+			filter: domain.Filter{
+				Authors: []string{"pub1", "pub2"},
+			},
+			event: createEvent("id1", "pub3", 1000, 1, nil),
+			want:  false,
+		},
+		{
+			name: "Kinds filter - match",
+			filter: domain.Filter{
+				Kinds: []int{1, 2},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, nil),
+			want:  true,
+		},
+		{
+			name: "Kinds filter - no match",
+			filter: domain.Filter{
+				Kinds: []int{1, 2},
+			},
+			event: createEvent("id1", "pub1", 1000, 3, nil),
+			want:  false,
+		},
+		{
+			name: "Since filter - match",
+			filter: domain.Filter{
+				Since: int64toPtr(500),
+			},
+			event: createEvent("id1", "pub1", 1000, 1, nil),
+			want:  true,
+		},
+		{
+			name: "Since filter - no match (too old)",
+			filter: domain.Filter{
+				Since: int64toPtr(1500),
+			},
+			event: createEvent("id1", "pub1", 1000, 1, nil),
+			want:  false,
+		},
+		{
+			name: "Until filter - match",
+			filter: domain.Filter{
+				Until: int64toPtr(1500),
+			},
+			event: createEvent("id1", "pub1", 1000, 1, nil),
+			want:  true,
+		},
+		{
+			name: "Until filter - no match (too new)",
+			filter: domain.Filter{
+				Until: int64toPtr(500),
+			},
+			event: createEvent("id1", "pub1", 1000, 1, nil),
+			want:  false,
+		},
+		{
+			name: "Tags filter - match #e tag",
+			filter: domain.Filter{
+				Tags: map[string][]string{
+					"e": {"event1", "event2"},
+				},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, [][]string{
+				{"e", "event1"},
+				{"p", "pubkey1"},
+			}),
+			want: true,
+		},
+		{
+			name: "Tags filter - match #p tag",
+			filter: domain.Filter{
+				Tags: map[string][]string{
+					"p": {"pubkey1", "pubkey2"},
+				},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, [][]string{
+				{"e", "event1"},
+				{"p", "pubkey1"},
+			}),
+			want: true,
+		},
+		{
+			name: "Tags filter - no match",
+			filter: domain.Filter{
+				Tags: map[string][]string{
+					"e": {"event1", "event2"},
+				},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, [][]string{
+				{"e", "event3"},
+				{"p", "pubkey1"},
+			}),
+			want: false,
+		},
+		{
+			name: "Multiple tags - all match",
+			filter: domain.Filter{
+				Tags: map[string][]string{
+					"e": {"event1"},
+					"p": {"pubkey1"},
+				},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, [][]string{
+				{"e", "event1"},
+				{"p", "pubkey1"},
+			}),
+			want: true,
+		},
+		{
+			name: "Multiple tags - one doesn't match",
+			filter: domain.Filter{
+				Tags: map[string][]string{
+					"e": {"event1"},
+					"p": {"pubkey2"}, // doesn't match
+				},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, [][]string{
+				{"e", "event1"},
+				{"p", "pubkey1"},
+			}),
+			want: false,
+		},
+		{
+			name: "Complex filter - all conditions match",
+			filter: domain.Filter{
+				IDs:     []string{"id1"},
+				Authors: []string{"pub1"},
+				Kinds:   []int{1},
+				Since:   int64toPtr(500),
+				Until:   int64toPtr(1500),
+				Tags: map[string][]string{
+					"e": {"event1"},
+				},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, [][]string{
+				{"e", "event1"},
+			}),
+			want: true,
+		},
+		{
+			name: "Complex filter - one condition fails",
+			filter: domain.Filter{
+				IDs:     []string{"id1"},
+				Authors: []string{"pub1"},
+				Kinds:   []int{2}, // doesn't match (event kind is 1)
+				Since:   int64toPtr(500),
+				Until:   int64toPtr(1500),
+				Tags: map[string][]string{
+					"e": {"event1"},
+				},
+			},
+			event: createEvent("id1", "pub1", 1000, 1, [][]string{
+				{"e", "event1"},
+			}),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.filter.Matches(tt.event)
+			if got != tt.want {
+				t.Errorf("Filter.Matches() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}

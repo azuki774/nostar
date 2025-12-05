@@ -50,3 +50,87 @@ func NewFilterFromRaw(raw map[string]any) (Filter, error) {
 	f.Raw = raw
 	return f, nil
 }
+
+// Matches returns whether the event satisfies this filter.
+// 1フィルターは AND 条件であることに注意
+func (f Filter) Matches(evt Event) bool {
+	// IDs filter
+	if len(f.IDs) > 0 {
+		found := false
+		for _, id := range f.IDs {
+			if evt.ID == id {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	// Authors filter
+	if len(f.Authors) > 0 {
+		found := false
+		for _, author := range f.Authors {
+			if evt.PubKey == author {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	// Kinds filter
+	if len(f.Kinds) > 0 {
+		found := false
+		for _, kind := range f.Kinds {
+			if evt.Kind == kind {
+				found = true
+				break
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	// Since filter
+	if f.Since != nil && evt.CreatedAt < *f.Since {
+		return false // since より古い場合
+	}
+
+	// Until filter
+	if f.Until != nil && evt.CreatedAt > *f.Until {
+		return false // until より新しい場合
+	}
+
+	// Tags filter (#e, #p, #t, etc.)
+	for fillterTagName, filterTagValues := range f.Tags {
+		// ex. tagName = "e" .. #e
+		// ex. tagValues = ["event1", "event2"]
+		found := false
+		for _, tag := range evt.Tags {
+			evtTagName := tag[0]
+			evtTagValue := tag[1]
+			if len(tag) >= 2 && evtTagName == fillterTagName {
+				// Check if any of the tag values match
+				for _, value := range filterTagValues {
+					if evtTagValue == value {
+						found = true
+						break
+					}
+				}
+				if found {
+					break
+				}
+			}
+		}
+		if !found {
+			return false
+		}
+	}
+
+	return true
+}
