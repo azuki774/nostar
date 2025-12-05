@@ -85,5 +85,6 @@ jobs:
           nohup ./bin/nostar serve &
           sleep 5s
 
-      - name: Post powa
-        run: algia powa
+      - name: Run tests
+        run: ./run.sh
+        working-directory: ./tests
