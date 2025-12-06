@@ -7,3 +7,5 @@ algia powa
 
 echo "#01-2: search powa"
 algia search | grep 'ぽわ〜'
+
+echo "#01: ✓ Test passed"

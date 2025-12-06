@@ -24,14 +24,16 @@ var upgrader = websocket.Upgrader{
 // Server is an inbound adapter that accepts WebSocket connections
 // and forwards parsed messages to RelayService.
 type Server struct {
-	addr  string // 例: 127.0.0.1:9999
-	relay *usecase.RelayService
+	addr           string // 例: 127.0.0.1:9999
+	relay          *usecase.RelayService
+	connectionPool *domain.ConnectionPool
 }
 
-func NewServer(addr string, relay *usecase.RelayService) *Server {
+func NewServer(addr string, relay *usecase.RelayService, connPool *domain.ConnectionPool) *Server {
 	return &Server{
-		addr:  addr,
-		relay: relay,
+		addr:           addr,
+		relay:          relay,
+		connectionPool: connPool,
 	}
 }
 
@@ -71,7 +73,27 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
+
+	connID := domain.NewConnectionID()
 	zap.S().Debugw("websocket upgraded", "remote_addr", r.RemoteAddr)
+
+	// WebSocketConnection を作成
+	wsConn := &WebSocketConnection{
+		id:   connID,
+		conn: c,
+	}
+
+	// ConnectionPool に追加
+	s.connectionPool.Add(wsConn)
+	defer func() {
+		// 接続切断時にすべてのサブスクリプションを解除
+		if err := s.relay.UnregisterAllSubscriptions(context.Background(), connID); err != nil {
+			zap.S().Errorw("failed to unregister all subscriptions", "connID", connID, "error", err)
+		}
+		s.connectionPool.Remove(connID)
+	}()
+
+	zap.S().Debugw("added to connection pool", "id", connID, "num", s.connectionPool.GetSize())
 
 	for {
 		ctx := r.Context()
@@ -185,15 +207,38 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 
-			// この実装では以降何もしない
+			// この時点からライブ配信開始
+			reqMsg := usecase.ReqMessage{
+				Subscription: sub,
+				ConnectionID: connID,
+			}
+
+			// SubscriptionRegistry に登録
+			if err := s.relay.RegisterSubscription(ctx, reqMsg); err != nil {
+				zap.S().Errorw("failed to error subscription", zap.Error(err))
+				if err := c.WriteJSON([]string{"NOTICE", "internal error on REQ (subscription)"}); err != nil {
+					zap.S().Errorw("write subscription failed", zap.Error(err))
+				}
+				return
+			}
+			zap.S().Infow("register subscription", "connID", connID, "subscriptionID", sub.ID)
 
 		case "CLOSE":
-			zap.S().Debugw("received CLOSE")
+			zap.S().Debugw("received CLOSE", "connID", connID, "subscriberID", wire.SubscriptionID)
 
 			if err := s.relay.HandleClose(ctx, usecase.CloseMessage{SubscriptionID: wire.SubscriptionID}); err != nil {
 				zap.S().Errorw("handle CLOSE failed", zap.Error(err))
-				// CLOSE は ack 不要なので、エラーでもクライアントには特に何も返さず continue でよい
-				continue
+				// CLOSE は ack 不要なので、エラーでもクライアントには特に何も返さない
+			}
+
+			closeMsg := usecase.CloseMessage{
+				ConnectionID:   connID,
+				SubscriptionID: wire.SubscriptionID,
+			}
+
+			if err := s.relay.UnregisterSubscription(ctx, closeMsg); err != nil {
+				zap.S().Errorw("delete subscription failed", zap.Error(err))
+				// ユーザに通知しなくていい
 			}
 		}
 	}
