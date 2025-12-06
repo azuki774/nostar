@@ -24,14 +24,16 @@ var upgrader = websocket.Upgrader{
 // Server is an inbound adapter that accepts WebSocket connections
 // and forwards parsed messages to RelayService.
 type Server struct {
-	addr  string // 例: 127.0.0.1:9999
-	relay *usecase.RelayService
+	addr           string // 例: 127.0.0.1:9999
+	relay          *usecase.RelayService
+	connectionPool *domain.ConnectionPool
 }
 
 func NewServer(addr string, relay *usecase.RelayService) *Server {
 	return &Server{
-		addr:  addr,
-		relay: relay,
+		addr:           addr,
+		relay:          relay,
+		connectionPool: domain.NewConnectionPool(),
 	}
 }
 
@@ -71,7 +73,20 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer c.Close()
+
+	connID := domain.NewConnectionID()
 	zap.S().Debugw("websocket upgraded", "remote_addr", r.RemoteAddr)
+
+	// WebSocketConnection を作成
+	wsConn := &WebSocketConnection{
+		id:   connID,
+		conn: c,
+	}
+
+	// ConnectionPool に追加
+	s.connectionPool.Add(wsConn)
+	defer s.connectionPool.Remove(connID)
+	zap.S().Debugw("added to connection pool", "id", connID, "num", s.connectionPool.GetSize())
 
 	for {
 		ctx := r.Context()
