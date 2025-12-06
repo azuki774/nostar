@@ -5,11 +5,14 @@ GOOS ?= linux
 GOARCH ?= amd64
 LDFLAGS ?= -s -w -extldflags '-static'
 
-.PHONY: build clean tidy fmt test staticcheck check setup
+.PHONY: bin build clean tidy fmt test staticcheck check setup
 
-build:
+bin:
 	mkdir -p $(BUILD_DIR)
 	CGO_ENABLED=0 GOOS=$(GOOS) GOARCH=$(GOARCH) go build -trimpath -ldflags "$(LDFLAGS)" -o $(BUILD_DIR)/$(BINARY_NAME) $(PKG)
+
+build:
+	docker build -t azuki774/nostar:dev -f build/Dockerfile .
 
 clean:
 	rm -rf $(BUILD_DIR)

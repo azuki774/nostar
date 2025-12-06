@@ -61,7 +61,7 @@ jobs:
           psql -h localhost -U postgres -d nostar -f scripts/migrations/001_init.sql
 
       - name: Build binary
-        run: make build
+        run: make bin
 
       - name: Install algia (Nostr Client CLI) # https://github.com/mattn/algia
         run: |
