@@ -5,7 +5,7 @@ set -e
 echo "#11 NIP-11: Relay Information Document"
 res=`curl http://localhost:9999/.well-known/nostr.json`
 
-if echo $res | jq .software != "https://github.com/azuki774/nostar"; then
+if [ "$(echo $res | jq -r '.software')" != "https://github.com/azuki774/nostar" ]; then
   echo "#11: ✗ Test failed"
   echo $res
   exit 1
