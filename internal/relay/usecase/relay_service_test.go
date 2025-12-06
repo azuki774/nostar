@@ -144,7 +144,8 @@ func TestRelayService_HandleEvent(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			s := usecase.NewRelayService(tt.store)
+			connPool := domain.NewConnectionPool()
+			s := usecase.NewRelayService(tt.store, connPool)
 			mock, ok := tt.store.(*mockEventStore)
 			if ok {
 				mock.saveCalls = 0 // Reset counter

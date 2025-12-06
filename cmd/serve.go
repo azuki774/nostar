@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"nostar/internal/infrastructure/db"
+	"nostar/internal/relay/domain"
 	"nostar/internal/relay/usecase"
 	"nostar/internal/transport/websocket"
 	"os"
@@ -47,12 +48,15 @@ to quickly create a Cobra application.`,
 		// EventStore
 		eventStore := db.NewEventStore(gormDB)
 
+		// ConnectionPool 作成
+		connPool := domain.NewConnectionPool()
+
 		// RelayService
-		relaySvc := usecase.NewRelayService(eventStore)
+		relaySvc := usecase.NewRelayService(eventStore, connPool)
 
 		// Server
 		addr := fmt.Sprintf("0.0.0.0:%d", servePort)
-		Srv := websocket.NewServer(addr, relaySvc)
+		Srv := websocket.NewServer(addr, relaySvc, connPool)
 
 		_ = Srv.Run(ctx)
 	},

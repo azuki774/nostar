@@ -16,13 +16,14 @@ import (
 type RelayService struct {
 	store    relay.EventStore
 	registry domain.SubscriptionRegistry
-	connPool domain.ConnectionPool
+	connPool *domain.ConnectionPool
 }
 
-func NewRelayService(store relay.EventStore) *RelayService {
+func NewRelayService(store relay.EventStore, connPool *domain.ConnectionPool) *RelayService {
 	return &RelayService{
 		store:    store,
 		registry: memory.NewMemorySubscriptionRegistry(),
+		connPool: connPool, // BroadcastToSubscribers などを行うために、サービスでもコネクションプールにアクセスする
 	}
 }
 
@@ -89,7 +90,7 @@ func (s *RelayService) UnregisterAllSubscriptions(ctx context.Context, connID do
 }
 
 func (s *RelayService) BroadcastToSubscribers(ctx context.Context, evt domain.Event, subs []domain.SubscriptionMatch) error {
-	zap.S().Infow("BroadcastToSubscribers called", "subscriber_count", len(subs))
+	zap.S().Debugw("BroadcastToSubscribers called", "subscriber_count", len(subs))
 	for _, sub := range subs {
 		conn, exists := s.connPool.Get(sub.ConnectionID)
 		if !exists {

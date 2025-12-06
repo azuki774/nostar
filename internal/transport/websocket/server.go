@@ -29,11 +29,11 @@ type Server struct {
 	connectionPool *domain.ConnectionPool
 }
 
-func NewServer(addr string, relay *usecase.RelayService) *Server {
+func NewServer(addr string, relay *usecase.RelayService, connPool *domain.ConnectionPool) *Server {
 	return &Server{
 		addr:           addr,
 		relay:          relay,
-		connectionPool: domain.NewConnectionPool(),
+		connectionPool: connPool,
 	}
 }
 
@@ -224,7 +224,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			zap.S().Infow("register subscription", "connID", connID, "subscriptionID", sub.ID)
 
 		case "CLOSE":
-			zap.S().Debugw("received CLOSE")
+			zap.S().Debugw("received CLOSE", "connID", connID, "subscriberID", wire.SubscriptionID)
 
 			if err := s.relay.HandleClose(ctx, usecase.CloseMessage{SubscriptionID: wire.SubscriptionID}); err != nil {
 				zap.S().Errorw("handle CLOSE failed", zap.Error(err))
