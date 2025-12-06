@@ -71,6 +71,28 @@ func (msr *MemorySubscriptionRegistry) FindMatchingConnections(event domain.Even
 	return matchingConnIDs
 }
 
+// FindMatchingSubscriptions: 指定されたイベントにマッチする全ての (接続ID, サブスクリプションID) のペアを返す
+func (msr *MemorySubscriptionRegistry) FindMatchingSubscriptions(event domain.Event) []domain.SubscriptionMatch {
+	msr.mu.RLock()         // 読み取りロック
+	defer msr.mu.RUnlock() // 読み取りロック解除
+
+	var matches []domain.SubscriptionMatch
+	// 全ての接続をチェック
+	for connID, subscriptions := range msr.subs {
+		// この接続の各サブスクリプションがイベントにマッチするかチェック
+		for _, sub := range subscriptions {
+			if sub.Matches(event) {
+				matches = append(matches, domain.SubscriptionMatch{
+					ConnectionID:   connID,
+					SubscriptionID: sub.ID,
+				})
+			}
+		}
+	}
+
+	return matches
+}
+
 func NewMemorySubscriptionRegistry() domain.SubscriptionRegistry {
 	return &MemorySubscriptionRegistry{
 		subs: make(map[domain.ConnectionID][]domain.Subscription),

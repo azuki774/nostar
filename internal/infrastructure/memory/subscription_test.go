@@ -168,107 +168,108 @@ func TestMemorySubscriptionRegistry_UnregisterAll(t *testing.T) {
 	}
 }
 
-func TestMemorySubscriptionRegistry_FindMatchingConnections(t *testing.T) {
+func TestMemorySubscriptionRegistry_FindMatchingSubscriptions(t *testing.T) {
 	tests := []struct {
 		name  string
-		event domain.Event
 		setup func(*memory.MemorySubscriptionRegistry)
-		want  []domain.ConnectionID
+		event domain.Event
+		want  []domain.SubscriptionMatch
 	}{
 		{
-			name:  "event with kind=1 matches specific connection",
-			event: domain.Event{Kind: 1},
+			name: "single subscription matches event",
 			setup: func(msr *memory.MemorySubscriptionRegistry) {
-				// 接続1: kinds=[1] のみを購読
-				sub1 := domain.Subscription{
-					ID:      "sub-1",
-					Filters: []domain.Filter{{Kinds: []int{1}}},
-				}
-				msr.Register("conn-1", sub1)
-
-				// 接続2: kinds=[2] のみを購読
-				sub2 := domain.Subscription{
-					ID:      "sub-2",
-					Filters: []domain.Filter{{Kinds: []int{2}}},
-				}
-				msr.Register("conn-2", sub2)
-			},
-			want: []domain.ConnectionID{"conn-1"},
-		},
-		{
-			name:  "multiple connections match",
-			event: domain.Event{Kind: 1},
-			setup: func(msr *memory.MemorySubscriptionRegistry) {
-				// 接続1: kinds=[1] を購読
-				sub1 := domain.Subscription{
-					ID:      "sub-1",
-					Filters: []domain.Filter{{Kinds: []int{1}}},
-				}
-				msr.Register("conn-1", sub1)
-
-				// 接続2: kinds=[1,2] を購読
-				sub2 := domain.Subscription{
-					ID:      "sub-2",
-					Filters: []domain.Filter{{Kinds: []int{1, 2}}},
-				}
-				msr.Register("conn-2", sub2)
-			},
-			want: []domain.ConnectionID{"conn-1", "conn-2"},
-		},
-		{
-			name:  "no filters match",
-			event: domain.Event{Kind: 3},
-			setup: func(msr *memory.MemorySubscriptionRegistry) {
-				sub := domain.Subscription{
-					ID:      "sub-1",
-					Filters: []domain.Filter{{Kinds: []int{1, 2}}},
-				}
+				sub := domain.Subscription{ID: "sub-1", Filters: []domain.Filter{{Kinds: []int{1}}}}
 				msr.Register("conn-1", sub)
 			},
-			want: []domain.ConnectionID{},
+			event: domain.Event{Kind: 1},
+			want: []domain.SubscriptionMatch{
+				{ConnectionID: "conn-1", SubscriptionID: "sub-1"},
+			},
 		},
 		{
-			name:  "OR condition test with multiple filters",
+			name: "multiple subscriptions match same event",
+			setup: func(msr *memory.MemorySubscriptionRegistry) {
+				sub1 := domain.Subscription{ID: "sub-1", Filters: []domain.Filter{{Kinds: []int{1}}}}
+				sub2 := domain.Subscription{ID: "sub-2", Filters: []domain.Filter{{Kinds: []int{1}}}}
+				msr.Register("conn-1", sub1)
+				msr.Register("conn-1", sub2)
+			},
+			event: domain.Event{Kind: 1},
+			want: []domain.SubscriptionMatch{
+				{ConnectionID: "conn-1", SubscriptionID: "sub-1"},
+				{ConnectionID: "conn-1", SubscriptionID: "sub-2"},
+			},
+		},
+		{
+			name: "multiple connections have matching subscriptions",
+			setup: func(msr *memory.MemorySubscriptionRegistry) {
+				sub1 := domain.Subscription{ID: "sub-1", Filters: []domain.Filter{{Kinds: []int{1}}}}
+				sub2 := domain.Subscription{ID: "sub-2", Filters: []domain.Filter{{Kinds: []int{1}}}}
+				msr.Register("conn-1", sub1)
+				msr.Register("conn-2", sub2)
+			},
+			event: domain.Event{Kind: 1},
+			want: []domain.SubscriptionMatch{
+				{ConnectionID: "conn-1", SubscriptionID: "sub-1"},
+				{ConnectionID: "conn-2", SubscriptionID: "sub-2"},
+			},
+		},
+		{
+			name: "no subscriptions match event",
+			setup: func(msr *memory.MemorySubscriptionRegistry) {
+				sub := domain.Subscription{ID: "sub-1", Filters: []domain.Filter{{Kinds: []int{1}}}}
+				msr.Register("conn-1", sub)
+			},
 			event: domain.Event{Kind: 2},
+			want:  []domain.SubscriptionMatch{},
+		},
+		{
+			name: "connection has multiple subscriptions but only one matches",
 			setup: func(msr *memory.MemorySubscriptionRegistry) {
-				// kinds=[1] OR kinds=[2] のフィルタ
-				filter1 := domain.Filter{Kinds: []int{1}}
-				filter2 := domain.Filter{Kinds: []int{2}}
-				sub := domain.Subscription{
-					ID:      "sub-1",
-					Filters: []domain.Filter{filter1, filter2},
-				}
-				msr.Register("conn-1", sub)
+				sub1 := domain.Subscription{ID: "sub-1", Filters: []domain.Filter{{Kinds: []int{1}}}}
+				sub2 := domain.Subscription{ID: "sub-2", Filters: []domain.Filter{{Kinds: []int{2}}}}
+				msr.Register("conn-1", sub1)
+				msr.Register("conn-1", sub2)
 			},
-			want: []domain.ConnectionID{"conn-1"},
+			event: domain.Event{Kind: 1},
+			want: []domain.SubscriptionMatch{
+				{ConnectionID: "conn-1", SubscriptionID: "sub-1"},
+			},
+		},
+		{
+			name:  "empty registry returns no matches",
+			setup: func(msr *memory.MemorySubscriptionRegistry) {},
+			event: domain.Event{Kind: 1},
+			want:  []domain.SubscriptionMatch{},
 		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			msr := memory.NewMemorySubscriptionRegistry()
 			tt.setup(msr.(*memory.MemorySubscriptionRegistry))
-			got := msr.FindMatchingConnections(tt.event)
-
-			// スライスの順序を無視して比較
-			if !equalConnectionIDs(got, tt.want) {
-				t.Errorf("FindMatchingConnections() = %v, want %v", got, tt.want)
+			got := msr.FindMatchingSubscriptions(tt.event)
+			if !equalSubscriptionMatches(got, tt.want) {
+				t.Errorf("FindMatchingSubscriptions() = %v, want %v", got, tt.want)
 			}
 		})
 	}
 }
 
-// ヘルパー関数：ConnectionIDスライスの比較（順序無視）
-func equalConnectionIDs(a, b []domain.ConnectionID) bool {
+// ヘルパー関数：SubscriptionMatchスライスの比較（順序無視）
+func equalSubscriptionMatches(a, b []domain.SubscriptionMatch) bool {
 	if len(a) != len(b) {
 		return false
 	}
 
-	count := make(map[domain.ConnectionID]int)
-	for _, id := range a {
-		count[id]++
+	// マップを使ってカウント
+	count := make(map[string]int)
+	for _, match := range a {
+		key := string(match.ConnectionID) + ":" + match.SubscriptionID
+		count[key]++
 	}
-	for _, id := range b {
-		count[id]--
+	for _, match := range b {
+		key := string(match.ConnectionID) + ":" + match.SubscriptionID
+		count[key]--
 	}
 
 	for _, c := range count {

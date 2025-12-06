@@ -2,4 +2,4 @@
 
 # CI 上で実行することを想定
 
-./01_post_search.sh
+./01_algia_post.sh

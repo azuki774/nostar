@@ -9,10 +9,12 @@ type EventMessage struct {
 
 // ReqMessage wraps a REQ with filters.
 type ReqMessage struct {
+	ConnectionID domain.ConnectionID
 	Subscription domain.Subscription
 }
 
 // CloseMessage represents a CLOSE request for a subscription ID.
 type CloseMessage struct {
+	ConnectionID   domain.ConnectionID
 	SubscriptionID string
 }
