@@ -1,0 +1,9 @@
+[relay_info]
+name = "nostar"
+description = "A minimal Nostr relay implementation in Go"
+pubkey = ""
+contact = "admin@example.com"
+supported_nips = [1, 11]
+relay_countries = ["JP"]
+language_tags = ["ja"]
+posting_policy = "https://example.com/posting-policy"

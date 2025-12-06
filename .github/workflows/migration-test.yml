@@ -82,7 +82,7 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres:postgres@localhost:5432/nostar?sslmode=disable
         run: |
-          nohup ./bin/nostar serve &
+          nohup ./bin/nostar serve -c ./bin/config.toml &
           sleep 5s
 
       - name: Run tests

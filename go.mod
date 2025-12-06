@@ -3,6 +3,7 @@ module nostar
 go 1.25.4
 
 require (
+	github.com/BurntSushi/toml v1.5.0
 	github.com/google/uuid v1.6.0
 	github.com/gorilla/websocket v1.5.3
 	github.com/nbd-wtf/go-nostr v0.52.3

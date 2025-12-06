@@ -3,6 +3,7 @@ package cmd
 import (
 	"context"
 	"fmt"
+	"nostar/internal/config"
 	"nostar/internal/infrastructure/db"
 	"nostar/internal/relay/domain"
 	"nostar/internal/relay/usecase"
@@ -14,6 +15,9 @@ import (
 )
 
 var servePort int
+var configPath string
+
+const defaultConfigPath = "./config.toml"
 
 // serveCmd represents the serve command
 var serveCmd = &cobra.Command{
@@ -45,6 +49,14 @@ to quickly create a Cobra application.`,
 			return
 		}
 
+		// Config
+		cfg, err := config.LoadConfig(configPath)
+		if err != nil {
+			zap.S().Errorw("failed to load config", "path", "error", err)
+			os.Exit(1)
+		}
+		zap.S().Infow("load config", "path", configPath)
+
 		// EventStore
 		eventStore := db.NewEventStore(gormDB)
 
@@ -56,7 +68,8 @@ to quickly create a Cobra application.`,
 
 		// Server
 		addr := fmt.Sprintf("0.0.0.0:%d", servePort)
-		Srv := websocket.NewServer(addr, relaySvc, connPool)
+
+		Srv := websocket.NewServer(addr, relaySvc, connPool, &cfg.RelayInfo)
 
 		_ = Srv.Run(ctx)
 	},
@@ -74,4 +87,6 @@ func init() {
 	// Cobra supports local flags which will only run when this command
 	// is called directly, e.g.:
 	serveCmd.Flags().IntVarP(&servePort, "port", "p", 9999, "listen port")
+	serveCmd.Flags().StringVarP(&configPath, "config", "c", defaultConfigPath, "config file path")
+
 }
