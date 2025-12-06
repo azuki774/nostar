@@ -31,5 +31,5 @@ go.work.sum
 # .idea/
 # .vscode/
 
-bin/
+bin/nostar
 .dotfiles

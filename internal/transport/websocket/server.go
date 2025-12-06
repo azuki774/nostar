@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net/http"
 
+	"nostar/internal/config"
 	"nostar/internal/relay/domain"
 	"nostar/internal/relay/usecase"
 
@@ -27,18 +28,19 @@ type Server struct {
 	addr           string // 例: 127.0.0.1:9999
 	relay          *usecase.RelayService
 	connectionPool *domain.ConnectionPool
+	relayInfo      *config.RelayInfoConfig
 }
 
-func NewServer(addr string, relay *usecase.RelayService, connPool *domain.ConnectionPool) *Server {
+func NewServer(addr string, relay *usecase.RelayService, connPool *domain.ConnectionPool, relayInfo *config.RelayInfoConfig) *Server {
 	return &Server{
 		addr:           addr,
 		relay:          relay,
 		connectionPool: connPool,
+		relayInfo:      relayInfo,
 	}
 }
 
 // Run starts an HTTP server that would upgrade connections to WebSocket.
-// The actual WS upgrade/loop is TODO; this skeleton shows dependency wiring.
 func (s *Server) Run(ctx context.Context) error {
 	mux := http.NewServeMux()
 	mux.Handle("/", s) // Server implements http.Handler below.
@@ -66,6 +68,12 @@ func (s *Server) Run(ctx context.Context) error {
 }
 
 func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	// NIP-11: Relay Information Document
+	if r.Method == "GET" && (r.URL.Path == "/.well-known/nostr.json") {
+		s.handleRelayInfo(w, r)
+		return
+	}
+
 	// ここで HTTP → WebSocket にアップグレード
 	c, err := upgrader.Upgrade(w, r, nil)
 	if err != nil {
@@ -243,4 +251,58 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+}
+
+// handleRelayInfo handles NIP-11 Relay Information Document requests
+func (s *Server) handleRelayInfo(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Access-Control-Allow-Origin", "*")
+	w.Header().Set("Access-Control-Allow-Methods", "GET")
+	w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+
+	relayInfo := map[string]interface{}{
+		"name":        s.relayInfo.Name,
+		"description": s.relayInfo.Description,
+		"software":    s.relayInfo.Software,
+		"version":     s.relayInfo.Version,
+		// "limitation": map[string]interface{}{
+		// 	"max_message_length": s.relayInfo.Limitations.MaxMessageLength,
+		// 	"max_subscriptions":  s.relayInfo.Limitations.MaxSubscriptions,
+		// 	"max_filters":        s.relayInfo.Limitations.MaxFilters,
+		// 	"max_limit":          s.relayInfo.Limitations.MaxLimit,
+		// 	"max_subid_length":   s.relayInfo.Limitations.MaxSubIDLength,
+		// 	"min_pow_difficulty": s.relayInfo.Limitations.MinPowDifficulty,
+		// 	"auth_required":      s.relayInfo.Limitations.AuthRequired,
+		// 	"payment_required":   s.relayInfo.Limitations.PaymentRequired,
+		// },
+	}
+
+	// Optional fields
+	if s.relayInfo.Pubkey != "" {
+		relayInfo["pubkey"] = s.relayInfo.Pubkey
+	}
+	if s.relayInfo.Contact != "" {
+		relayInfo["contact"] = s.relayInfo.Contact
+	}
+	if len(s.relayInfo.SupportedNIPs) > 0 {
+		relayInfo["supported_nips"] = s.relayInfo.SupportedNIPs
+	}
+	if len(s.relayInfo.RelayCountries) > 0 {
+		relayInfo["relay_countries"] = s.relayInfo.RelayCountries
+	}
+	if len(s.relayInfo.LanguageTags) > 0 {
+		relayInfo["language_tags"] = s.relayInfo.LanguageTags
+	}
+	// if len(s.relayInfo.Tags.List) > 0 {
+	// 	relayInfo["tags"] = s.relayInfo.Tags.List
+	// }
+	if s.relayInfo.PostingPolicy != "" {
+		relayInfo["posting_policy"] = s.relayInfo.PostingPolicy
+	}
+
+	if err := json.NewEncoder(w).Encode(relayInfo); err != nil {
+		zap.S().Errorw("failed to encode relay info", "error", err)
+		http.Error(w, "Internal Server Error", http.StatusInternalServerError)
+		return
+	}
 }
